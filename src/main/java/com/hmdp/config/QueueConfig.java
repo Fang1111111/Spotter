@@ -89,6 +89,4 @@ public class QueueConfig {
         return BindingBuilder.bind(queueD).to(yExchange).with("YD");
     }
 
-
 }
-

@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `tb_mq_outbox` (
+  `id` bigint(20) NOT NULL COMMENT '消息ID(与业务主键对齐)',
+  `biz_type` varchar(64) NOT NULL COMMENT '业务类型',
+  `biz_key` varchar(128) NOT NULL COMMENT '业务唯一键',
+  `exchange_name` varchar(128) NOT NULL COMMENT '交换机',
+  `routing_key` varchar(128) NOT NULL COMMENT '路由键',
+  `payload` longtext NOT NULL COMMENT '消息体',
+  `status` tinyint(4) NOT NULL DEFAULT '0' COMMENT '0:init,1:published,2:publish_failed,3:returned,4:consumed,5:dead,6:compensated,7:consuming,8:consume_failed',
+  `retry_count` int(11) NOT NULL DEFAULT '0' COMMENT '重试次数',
+  `consume_retry_count` int(11) NOT NULL DEFAULT '0' COMMENT '消费重试次数',
+  `next_retry_time` datetime DEFAULT NULL COMMENT '下次重试时间',
+  `last_error` varchar(500) DEFAULT NULL COMMENT '最近错误原因',
+  `published_time` datetime DEFAULT NULL COMMENT '发布成功时间',
+  `consumed_time` datetime DEFAULT NULL COMMENT '消费成功时间',
+  `compensate_time` datetime DEFAULT NULL COMMENT '补偿时间',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_biz_type_key` (`biz_type`,`biz_key`),
+  KEY `idx_status_retry` (`status`,`next_retry_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='MQ outbox消息表';

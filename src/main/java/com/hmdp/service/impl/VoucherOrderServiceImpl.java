@@ -5,21 +5,18 @@ import cn.hutool.json.JSONUtil;
 import com.hmdp.dto.Result;
 import com.hmdp.entity.VoucherOrder;
 import com.hmdp.mapper.VoucherOrderMapper;
+import com.hmdp.service.IMqOutboxMessageService;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.hmdp.config.QueueConfig;
 import com.hmdp.utils.RedisIdWorker;
 import com.hmdp.utils.UserHolder;
-import com.rabbitmq.client.Channel;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.ibatis.javassist.bytecode.stackmap.BasicBlock;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
-import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.aop.framework.AopContext;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.data.redis.connection.stream.*;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -33,10 +30,6 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 /**
  * <p>
@@ -54,9 +47,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private ISeckillVoucherService seckillVoucherService;
 
     @Resource
-    private RabbitTemplate rabbitTemplate;
-    @Resource
     private RedisIdWorker redisIdWorker;
+
+    @Resource
+    private IMqOutboxMessageService outboxMessageService;
 
     @Resource
     private StringRedisTemplate stringRedisTemplate;
@@ -234,12 +228,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         // 增加消息发送的异常处理
         //放入mq
         String jsonStr = JSONUtil.toJsonStr(order);
-        try {
-            rabbitTemplate.convertAndSend("X","XA",jsonStr );
-        } catch (Exception e) {
-            log.error("发送 RabbitMQ 消息失败，订单ID: {}", orderId, e);
-            throw new RuntimeException("发送消息失败");
-        }
+        outboxMessageService.createAndSendVoucherOrderOutbox(order, jsonStr, QueueConfig.X_EXCHANGE, "XA");
         // 3. 返回订单号给前端（实际下单异步处理）
         return Result.ok(orderId);
     }
@@ -295,7 +284,7 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
         //一人一单
         //查询订单
         Long userId =voucherOrder.getUserId();
-            int count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
+            Long count = query().eq("user_id", userId).eq("voucher_id", voucherOrder.getVoucherId()).count();
             //判断是否存在
             if (count > 0) {
                 //用户已经购买过了
